@@ -232,14 +232,9 @@ const searchMovies = async (req, res) => {
       return res.send(error(404, "No movies found", "search movies"));
     }
 
-<<<<<<< HEAD
     // Store the search results in the cache for 24 hour (3600 seconds * 24)
     const cacheDuration = 24 * 3600;
     nodeCache.set(cacheKey, movies, cacheDuration);
-=======
-    // Store the search results in the cache for 1 hour (3600 seconds)
-    nodeCache.set(cacheKey, movies, 3600);
->>>>>>> fb10e0bf805b989d4c8b7db54c6c5f585185cb30
 
     return res.send(success(200, "Search results found", movies));
   } catch (err) {
