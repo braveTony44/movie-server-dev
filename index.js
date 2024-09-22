@@ -5,6 +5,8 @@ require("dotenv").config();
 const movieRoute = require("./routes/movieRoute");
 const userFeedback = require("./routes/feedbackRoute");
 const multer = require("multer");
+const fs = require("fs");
+const path = require("path");
 const cors = require("cors");
 const { error } = require("./services/errors");
 const morgan = require("morgan");
@@ -31,7 +33,14 @@ app.use(limiter);
 // Multer storage for file uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, "./uploads/"); // Store uploaded files
+    const uploadPath = path.join(__dirname, "uploads"); // Define the upload directory
+
+    // Check if 'uploads' folder exists, create if it doesn't
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath, { recursive: true }); // Create the folder if it doesn't exist
+    }
+
+    cb(null, uploadPath); // Proceed with the upload
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);

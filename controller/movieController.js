@@ -4,6 +4,7 @@ const { success, error } = require("../services/errors");
 const nodeCache = require("../services/cacheing");
 const cloudinary = require("../services/cloudinary");
 
+
 // Create a new movie
 const newMovie = async (req, res) => {
   try {
@@ -90,8 +91,9 @@ const getAllMovies = async (req, res) => {
     if (movies.length === 0) {
       return res.send(error(404, "No movies found", "get all movies"));
     }
-
-    nodeCache.set("getAllMovies", movies, 3600); // Cache for 1 hour
+    // set cached to 24 hours
+    const cacheDuration = 24 * 3600;
+    nodeCache.set("getAllMovies", movies, cacheDuration); // Cache for 1 hour
     return res.send(success(200, "Movies fetched successfully", movies));
   } catch (e) {
     return res.send(error(500, e.message, "get all movies"));
@@ -119,7 +121,8 @@ const getMovieByTitle = async (req, res) => {
       return res.send(error(404, "Movie not found", "get movie by Title"));
     }
 
-    nodeCache.set(cacheKey, movie, 3600); // Cache for 1 hour
+    const cacheDuration = 24 * 3600;
+    nodeCache.set(cacheKey, movie, cacheDuration); // Cache for 24 hour
     return res.send(success(200, "Movie fetched successfully", movie));
   } catch (e) {
     return res.send(error(500, e.message, "get movie by Title"));
@@ -204,7 +207,6 @@ const getSomeMovies = async (req, res) => {
   }
 };
 
-// Search for movies
 const searchMovies = async (req, res) => {
   const query = req.query.q;
 
@@ -212,16 +214,34 @@ const searchMovies = async (req, res) => {
     return res.send(error(400, "Search query not provided", "search movies"));
   }
 
+  const cacheKey = `searchMovies_${query}`;
+  const cachedMovies = nodeCache.get(cacheKey);
+
+  // Check if the search result is cached
+  if (cachedMovies) {
+    return res.send(success(200, "Search results found (from cache)", cachedMovies));
+  }
+
   try {
     const movies = await MOVIE.find({
       title: { $regex: query, $options: "i" }
     }).lean();
+
+    // If no movies are found, return 404
+    if (movies.length === 0) {
+      return res.send(error(404, "No movies found", "search movies"));
+    }
+
+    // Store the search results in the cache for 24 hour (3600 seconds * 24)
+    const cacheDuration = 24 * 3600;
+    nodeCache.set(cacheKey, movies, cacheDuration);
 
     return res.send(success(200, "Search results found", movies));
   } catch (err) {
     return res.send(error(500, err.message, "search movies"));
   }
 };
+
 
 // Get movies by genre
 const movieByGenre = async (req, res) => {
@@ -246,8 +266,8 @@ const movieByGenre = async (req, res) => {
     if (movies.length === 0) {
       return res.send(error(404, "No movies found for this genre", "movieByGenre"));
     }
-
-    nodeCache.set(cacheKey, movies, 3600); // Cache for 1 hour
+    const cacheDuration = 24 * 3600;
+    nodeCache.set(cacheKey, movies, cacheDuration); // Cache for 24 hour
     return res.send(success(200, "Movies fetched successfully", movies));
   } catch (err) {
     return res.send(error(500, "Server error", "movieByGenre"));
@@ -274,7 +294,8 @@ const moviesByType = async(req,res)=>{
     if(movies.length === 0){
       return res.send(error(404, "NO Movie found", "moviesByType"));
     }
-    nodeCache.set(cacheKey, movies, 3600); // Cache for 1 hour
+    const cacheDuration = 24 * 3600;
+    nodeCache.set(cacheKey, movies, cacheDuration); // Cache for 24 hour
     return res.send(success(200,`${type} found successfully`, movies));
   } catch (err) {
     return res.send(error(500, err.message, "moviesByType"));
