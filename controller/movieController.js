@@ -212,16 +212,33 @@ const searchMovies = async (req, res) => {
     return res.send(error(400, "Search query not provided", "search movies"));
   }
 
+  const cacheKey = `searchMovies_${query}`;
+  const cachedMovies = nodeCache.get(cacheKey);
+
+  // Check if the search result is cached
+  if (cachedMovies) {
+    return res.send(success(200, "Search results found (from cache)", cachedMovies));
+  }
+
   try {
     const movies = await MOVIE.find({
       title: { $regex: query, $options: "i" }
     }).lean();
+
+    // If no movies are found, return 404
+    if (movies.length === 0) {
+      return res.send(error(404, "No movies found", "search movies"));
+    }
+
+    // Store the search results in the cache for 1 hour (3600 seconds)
+    nodeCache.set(cacheKey, movies, 3600);
 
     return res.send(success(200, "Search results found", movies));
   } catch (err) {
     return res.send(error(500, err.message, "search movies"));
   }
 };
+
 
 // Get movies by genre
 const movieByGenre = async (req, res) => {
