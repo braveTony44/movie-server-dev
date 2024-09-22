@@ -1,0 +1,294 @@
+const MOVIE = require("../models/movieSchema");
+const mongoose = require("mongoose");
+const { success, error } = require("../services/errors");
+const nodeCache = require("../services/cacheing");
+const cloudinary = require("../services/cloudinary");
+
+// Create a new movie
+const newMovie = async (req, res) => {
+  try {
+    const {
+      title, type, shortDesc, imdbRating, releaseYear, avilLang, longDesc,
+      runtime, director, genres, availQuality, availDownloads
+    } = req.body;
+
+    // Use req.files for handling file uploads
+    const posterIMG = req.files && req.files['posterIMG'] ? req.files['posterIMG'][0].path : null;  // Handle poster image file
+    const availQualitySample = req.files && req.files['availQualitySample'] ? req.files['availQualitySample'].map(file => file.path) : [];  // Handle avail quality sample files
+
+    // Validate that all fields are filled
+    if (!title || !type || !posterIMG || !shortDesc || !imdbRating || !releaseYear || !runtime) {
+      return res.send(error(400, "All fields are required", "new movie"));
+    }
+
+    // Check if movie already exists
+    const isMovieExist = await MOVIE.findOne({ title }).lean(); // Use lean for faster query
+    if (isMovieExist) {
+      return res.send(error(409, "Movie already exists", "new movie"));
+    }
+
+    // Upload poster image to Cloudinary, convert to AVIF or WebP, reduce quality
+    let posterUploadResult = null;
+    if (posterIMG) {
+      posterUploadResult = await cloudinary.uploader.upload(posterIMG, {
+        format: 'avif',   // Convert to AVIF for optimal performance
+        quality: '70'     // Reduce quality to 70% for optimization
+      });
+    }
+
+    // Upload each availQualitySample file to Cloudinary and store the results
+    const qualitySampleUploadResults = [];
+    if (availQualitySample.length > 0) {
+      for (const file of availQualitySample) {
+        const result = await cloudinary.uploader.upload(file, {
+          format: 'avif',   // Convert to AVIF
+          quality: '70'     // Reduce quality to 70%
+        });
+        qualitySampleUploadResults.push(result.secure_url); // Store secure URLs
+      }
+    }
+
+    // Create the movie in the database
+    const movie = await MOVIE.create({
+      title,
+      type,
+      posterIMG: posterUploadResult ? posterUploadResult.secure_url : null,  // Store uploaded poster URL
+      shortDesc,
+      imdbRating,
+      releaseYear,
+      avilLang,
+      longDesc,
+      runtime,
+      director,
+      availQualitySample: qualitySampleUploadResults,  // Store array of sample URLs
+      genres,
+      availQuality,
+      availDownloads
+    });
+
+    // Clear relevant caches
+    nodeCache.del("getMovieByID");
+    nodeCache.del("getAllMovies");
+
+    return res.send(success(201, "Movie created successfully", movie));
+  } catch (e) {
+    console.error(`Error creating movie: ${e.message}`);
+    return res.send(error(500, e.message, "new movie"));
+  }
+};
+
+
+// Get all movies
+const getAllMovies = async (req, res) => {
+  try {
+    const cachedMovies = nodeCache.get("getAllMovies");
+    if (cachedMovies) {
+      return res.send(success(200, "Movies fetched from cache successfully", cachedMovies));
+    }
+
+    const movies = await MOVIE.find().lean();
+    if (movies.length === 0) {
+      return res.send(error(404, "No movies found", "get all movies"));
+    }
+
+    nodeCache.set("getAllMovies", movies, 3600); // Cache for 1 hour
+    return res.send(success(200, "Movies fetched successfully", movies));
+  } catch (e) {
+    return res.send(error(500, e.message, "get all movies"));
+  }
+};
+
+// Get movie by ID
+const getMovieByTitle = async (req, res) => {
+  const { title } = req.params;
+
+  // if (!mongoose.Types.ObjectId.isValid(id)) {
+  //   return res.send(error(400, "Invalid movie ID", "get movie by ID"));
+  // }
+
+  const cacheKey = `getMovieByID_${title}`;
+  const cachedMovie = nodeCache.get(cacheKey);
+
+  if (cachedMovie) {
+    return res.send(success(200, "Movie fetched from cache successfully", cachedMovie));
+  }
+
+  try {
+    const movie = await MOVIE.findOne({title}).lean();
+    if (!movie) {
+      return res.send(error(404, "Movie not found", "get movie by Title"));
+    }
+
+    nodeCache.set(cacheKey, movie, 3600); // Cache for 1 hour
+    return res.send(success(200, "Movie fetched successfully", movie));
+  } catch (e) {
+    return res.send(error(500, e.message, "get movie by Title"));
+  }
+};
+
+// Update movie
+const updateMovie = async (req, res) => {
+  const { id } = req.params;
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.send(error(400, "Invalid movie ID", "update movie"));
+  }
+
+  try {
+    const updateFields = {};
+    const allowedFields = [
+      "title", "posterIMG", "shortDesc", "longDesc", "imdbRating", "releaseYear",
+      "avilLang", "type", "runtime", "director", "availQualitySample", "genres",
+      "availQuality", "availDownloads"
+    ];
+
+    allowedFields.forEach(field => {
+      if (req.body[field]) updateFields[field] = req.body[field];
+    });
+
+    const movie = await MOVIE.findByIdAndUpdate(id, updateFields, {
+      new: true,
+      lean: true
+    });
+
+    if (!movie) {
+      return res.send(error(404, "Movie not found", "update movie"));
+    }
+
+    nodeCache.del(`getMovieByID_${id}`);
+    nodeCache.del("getAllMovies");
+
+    return res.send(success(200, "Movie updated successfully", movie));
+  } catch (e) {
+    return res.send(error(500, e.message, "update movie"));
+  }
+};
+
+// Delete movie
+const deleteMovie = async (req, res) => {
+  const { id } = req.params;
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.send(error(400, "Invalid movie ID", "delete movie"));
+  }
+
+  try {
+    const movie = await MOVIE.findByIdAndDelete(id).lean();
+    if (!movie) {
+      return res.send(error(404, "Movie not found", "delete movie"));
+    }
+
+    nodeCache.del(`getMovieByID_${id}`);
+    nodeCache.del("getAllMovies");
+
+    return res.send(success(200, "Movie deleted successfully", movie));
+  } catch (e) {
+    return res.send(error(500, e.message, "delete movie"));
+  }
+};
+
+// Get limited movies with pagination
+const getSomeMovies = async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit, 10) || 10; // Default limit to 10
+    const skip = parseInt(req.query.skip, 10) || 0;
+
+    const movies = await MOVIE.find().skip(skip).limit(limit).lean();
+    if (movies.length === 0) {
+      return res.send(error(404, "No movies found", "get some movies"));
+    }
+
+    return res.send(success(200, "Movies fetched successfully", movies));
+  } catch (err) {
+    return res.send(error(500, err.message, "get some movies"));
+  }
+};
+
+// Search for movies
+const searchMovies = async (req, res) => {
+  const query = req.query.q;
+
+  if (!query) {
+    return res.send(error(400, "Search query not provided", "search movies"));
+  }
+
+  try {
+    const movies = await MOVIE.find({
+      title: { $regex: query, $options: "i" }
+    }).lean();
+
+    return res.send(success(200, "Search results found", movies));
+  } catch (err) {
+    return res.send(error(500, err.message, "search movies"));
+  }
+};
+
+// Get movies by genre
+const movieByGenre = async (req, res) => {
+  const { id } = req.params;
+
+  if (!id) {
+    return res.send(error(400, "Genre ID not provided", "movieByGenre"));
+  }
+
+  const cacheKey = `movieByGenre_${id}`;
+  const cachedMovies = nodeCache.get(cacheKey);
+
+  if (cachedMovies) {
+    return res.send(success(200, "Movies fetched from cache successfully", cachedMovies));
+  }
+
+  try {
+    const movies = await MOVIE.find({
+      genres: { $regex: new RegExp(id, "i") }
+    }).lean();
+
+    if (movies.length === 0) {
+      return res.send(error(404, "No movies found for this genre", "movieByGenre"));
+    }
+
+    nodeCache.set(cacheKey, movies, 3600); // Cache for 1 hour
+    return res.send(success(200, "Movies fetched successfully", movies));
+  } catch (err) {
+    return res.send(error(500, "Server error", "movieByGenre"));
+  }
+};
+
+// get movies by type like movies,series and documentry
+const moviesByType = async(req,res)=>{
+  try {
+    const {type} = req.params;
+    if(!type){
+      return res.send(error(404, "Type is not found", "moviesByType"));
+    }
+
+    const cacheKey = `moviesByType_${type}`;
+    const cachedMovies = nodeCache.get(cacheKey);
+  
+    if (cachedMovies) {
+      return res.send(success(200, "Movies fetched from cache successfully", cachedMovies));
+    }
+  
+      // Use case-insensitive regex to match the type regardless of case
+      const movies = await MOVIE.find({ type: { $regex: new RegExp(type, "i") } }).lean();
+    if(movies.length === 0){
+      return res.send(error(404, "NO Movie found", "moviesByType"));
+    }
+    nodeCache.set(cacheKey, movies, 3600); // Cache for 1 hour
+    return res.send(success(200,`${type} found successfully`, movies));
+  } catch (err) {
+    return res.send(error(500, err.message, "moviesByType"));
+  }
+}
+
+module.exports = {
+  newMovie,
+  getAllMovies,
+  getMovieByTitle,
+  updateMovie,
+  deleteMovie,
+  moviesByType,
+  getSomeMovies,
+  searchMovies,
+  movieByGenre
+};
