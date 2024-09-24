@@ -22,13 +22,18 @@ app.use(cors());
 app.use(express.json());
 app.use(helmet());  // Add security headers
 app.use(compression());  // Compress response bodies
+app.set('trust proxy', 1); // Enable proxy trust for Express
 
 // Rate Limiting (e.g., max 100 requests per 15 minutes)
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per window
+  max: 10, // Limit each IP to 100 requests per window
+  message: "Too many requests from this IP, please try again after 15 minutes.",
+  // This will use the client's IP based on 'X-Forwarded-For' only if trust proxy is enabled
+  keyGenerator: (req) => req.ip, // Ensures the correct client IP is used for rate limiting
 });
 app.use(limiter);
+console.log(limiter);
 
 // Multer storage for file uploads
 const storage = multer.diskStorage({
