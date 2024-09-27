@@ -5,6 +5,7 @@ const router = require("express").Router();
 router.post("/create",newMovie);
 router.get("/get",getAllMovies);
 router.get("/get/:title",getMovieByTitle);
+// router.get("/get/episodes/:title",)
 router.get("/genre/:id",movieByGenre);
 router.put("/update/:id",updateMovie);
 router.get("/get/type/:type",moviesByType);

@@ -18,6 +18,11 @@ const MovieData = new mongoose.Schema({
     genres:{type:Array},
     availQuality:{type:Array},
     availDownloads:{type:Array},
+    episodes: [{ 
+        type: mongoose.Schema.Types.ObjectId, 
+        ref: 'Episode' // Reference to the Episode model
+      }]
+    
     
 })
 module.exports = mongoose.model("Movie",MovieData);

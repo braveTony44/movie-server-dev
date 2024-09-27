@@ -4,6 +4,7 @@ const app = express();
 require("dotenv").config();
 const movieRoute = require("./routes/movieRoute");
 const userFeedback = require("./routes/feedbackRoute");
+const episodeRoute = require("./routes/episodeRoute");
 const multer = require("multer");
 const fs = require("fs");
 const path = require("path");
@@ -26,7 +27,7 @@ app.set('trust proxy', 1); // Enable proxy trust for Express
 
 // Rate Limiting (e.g., max 100 requests per 15 minutes)
 const limiter = rateLimit({
-  windowMs: 10 * 60 * 1000, // 15 minutes
+  windowMs: 10 * 60 * 1000, // 10 minutes
   max: 100, // Limit each IP to 100 requests per window
   message: "Too many requests from this IP, please try again after 15 minutes.",
   // This will use the client's IP based on 'X-Forwarded-For' only if trust proxy is enabled
@@ -83,6 +84,8 @@ app.use(
   upload.single("complainSampleIMG"),
   userFeedback
 );
+
+app.use("/api/v1/episode",episodeRoute);
 
 // Health check route
 app.get("/", (req, res) => {
