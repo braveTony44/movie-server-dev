@@ -33,7 +33,10 @@ const newMovie = async (req, res) => {
     if (posterIMG) {
       posterUploadResult = await cloudinary.uploader.upload(posterIMG, {
         format: 'avif',   // Convert to AVIF for optimal performance
-        quality: '70'     // Reduce quality to 70% for optimization
+        quality: '70',   // Reduce quality to 70% for optimization
+        width: 250,       // Specify the desired width
+        height: 300,      // Specify the desired height
+        crop: 'scale' 
       });
     }
 
@@ -67,9 +70,11 @@ const newMovie = async (req, res) => {
       availDownloads
     });
 
-    // Clear relevant caches
-    nodeCache.del("getMovieByID");
-    nodeCache.del("getAllMovies");
+    // Clear all relevant caches
+    nodeCache.flushAll(); // Clear all cached items
+    // Alternatively, you can specify specific cache keys to delete
+    // nodeCache.del("getMovieByID");
+    // nodeCache.del("getAllMovies");
 
     return res.send(success(201, "Movie created successfully", movie));
   } catch (e) {
